@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeopardy Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #1e3c72, #2a5298);
+            color: white;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+        h1 { margin: 20px 0; font-size: 2rem; }
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 5px;
+            width: 90%;
+            max-width: 800px;
+            margin: auto;
+            visibility: hidden;
+        }
+        .category { background: #ffcc00; color: #333; font-weight: bold; padding: 10px; text-transform: uppercase; border-radius: 5px; }
+        .cell {
+            background: #0077cc; padding: 20px; border-radius: 5px; cursor: pointer; transition: 0.3s; text-align: center;
+        }
+        .cell:hover { background: #005fa3; }
+        .cell.revealed { background: #f4f4f4; color: #333; }
+        button {
+            margin-top: 20px; padding: 10px 15px; font-size: 1rem; cursor: pointer;
+            background: #ffcc00; border: none; border-radius: 5px;
+        }
+        button:hover { background: #ffb700; }
+    </style>
+</head>
+<body>
+
+    <h1>Jeopardy Game</h1>
+    <button id="start-btn" onclick="startGame()">Start Game</button>
+    <p id="loading-msg" style="display:none;">Loading questions...</p>
+    <p id="error-msg" style="display:none; color: red;"></p>
+    <div id="game-board"></div>
+
+    <script>
+        const API_URL = "https://jservice.io/api/";
+        let categories = [];
+
+        const fallbackQuestions = [
+            { title: "Science", questions: [{ question: "What planet is closest to the Sun?", answer: "Mercury" }, { question: "What gas do plants absorb?", answer: "Carbon Dioxide" }, { question: "What is the chemical symbol for gold?", answer: "Au" }, { question: "How many bones in an adult human?", answer: "206" }, { question: "What is the powerhouse of the cell?", answer: "Mitochondria" }] },
+            { title: "Geography", questions: [{ question: "What is the capital of France?", answer: "Paris" }, { question: "Which ocean is the largest?", answer: "Pacific Ocean" }, { question: "What is the longest river?", answer: "Nile" }, { question: "What continent is India in?", answer: "Asia" }, { question: "What is the smallest country?", answer: "Vatican City" }] },
+            { title: "Math", questions: [{ question: "What is 7 + 8?", answer: "15" }, { question: "What is the square root of 64?", answer: "8" }, { question: "Solve: 9 x 9", answer: "81" }, { question: "What is 50% of 200?", answer: "100" }, { question: "What is π (pi) rounded to 3 digits?", answer: "3.14" }] },
+            { title: "History", questions: [{ question: "Who was the first U.S. President?", answer: "George Washington" }, { question: "Which year did World War II end?", answer: "1945" }, { question: "What was the Titanic?", answer: "A ship" }, { question: "Who discovered America?", answer: "Christopher Columbus" }, { question: "What was the Cold War?", answer: "A conflict between the USA and USSR" }] },
+            { title: "Sports", questions: [{ question: "How many players in a soccer team?", answer: "11" }, { question: "What is a basketball hoop height?", answer: "10 feet" }, { question: "Which country hosted the 2016 Olympics?", answer: "Brazil" }, { question: "What sport is played at Wimbledon?", answer: "Tennis" }, { question: "What is the national sport of Japan?", answer: "Sumo Wrestling" }] },
+            { title: "Movies", questions: [{ question: "Who played Iron Man?", answer: "Robert Downey Jr." }, { question: "What is the highest-grossing movie?", answer: "Avatar" }, { question: "Who directed 'Jurassic Park'?", answer: "Steven Spielberg" }, { question: "What movie is 'To infinity and beyond' from?", answer: "Toy Story" }, { question: "Which movie has the line 'I'll be back'?", answer: "The Terminator" }] }
+        ];
+
+        async function fetchCategoriesWithTimeout(timeout = 7000) {
+            return new Promise((resolve, reject) => {
+                let timer = setTimeout(() => reject("Request timed out"), timeout);
+                fetchCategories().then(data => {
+                    clearTimeout(timer);
+                    resolve(data);
+                }).catch(error => {
+                    clearTimeout(timer);
+                    reject(error);
+                });
+            });
+        }
+
+        async function fetchCategories() {
+            try {
+                let response = await fetch(API_URL + "categories?count=50");
+                let data = await response.json();
+                let validCategories = [];
+
+                for (let category of data) {
+                    let details = await fetch(API_URL + "category?id=" + category.id);
+                    let categoryData = await details.json();
+                    if (categoryData.clues.length >= 5) {
+                        validCategories.push({
+                            title: categoryData.title,
+                            questions: categoryData.clues.slice(0, 5)
+                        });
+                    }
+                    if (validCategories.length === 6) break;
+                }
+                return validCategories;
+            } catch (error) {
+                throw new Error("API failed");
+            }
+        }
+
+        async function startGame() {
+            document.getElementById("game-board").style.visibility = "hidden"; 
+            document.getElementById("loading-msg").style.display = "block";
+            document.getElementById("error-msg").style.display = "none";
+            document.getElementById("start-btn").innerText = "Restart Game";
+
+            try {
+                categories = await fetchCategoriesWithTimeout();
+                document.getElementById("loading-msg").style.display = "none";
+                loadBoard();
+            } catch (error) {
+                console.warn("Using fallback questions due to error:", error);
+                document.getElementById("loading-msg").style.display = "none";
+                document.getElementById("error-msg").style.display = "block";
+                document.getElementById("error-msg").innerText = "Failed to load API. Using default questions.";
+                categories = fallbackQuestions;
+                loadBoard();
+            }
+        }
+
+        function loadBoard() {
+            let board = document.getElementById("game-board");
+            board.innerHTML = "";
+            board.style.visibility = "visible";
+
+            categories.forEach(category => {
+                let div = document.createElement("div");
+                div.className = "category";
+                div.innerText = category.title;
+                board.appendChild(div);
+            });
+
+            for (let row = 0; row < 5; row++) {
+                categories.forEach(category => {
+                    let div = document.createElement("div");
+                    div.className = "cell";
+                    div.innerText = "?";
+                    div.onclick = () => revealQuestion(div, category.questions[row]);
+                    board.appendChild(div);
+                });
+            }
+        }
+
+        function revealQuestion(cell, question) {
+            if (!cell.classList.contains("revealed")) {
+                cell.classList.add("revealed");
+                cell.innerText = question.question;
+                setTimeout(() => { cell.innerText = "Answer: " + question.answer; }, 3000);
+            }
+        }
+    </script>
+
+</body>
+</html>
